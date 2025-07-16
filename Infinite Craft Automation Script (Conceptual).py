@@ -1,4 +1,5 @@
 import time
+import json
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
@@ -9,6 +10,7 @@ from crafting_library import CRAFTING_RECIPES
 
 # --- Configuration ---
 GAME_URL = "https://neal.fun/infinite-craft/"
+GAME_STATE_FILE = "game_state.json"
 
 # --- Goals ---
 GOALS = {
@@ -24,17 +26,42 @@ def setup_driver():
     try:
         service = ChromeService(ChromeDriverManager().install())
         options = webdriver.ChromeOptions()
+        # Optional: Run in headless mode (without opening a visible browser window)
+        # options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--log-level=3")
+        options.add_argument("--log-level=3") # Suppress verbose logging
+
         driver = webdriver.Chrome(service=service, options=options)
-        driver.set_page_load_timeout(30)
+        driver.set_page_load_timeout(30) # Set page load timeout
         print("WebDriver setup successful.")
         return driver
     except WebDriverException as e:
         print(f"Error setting up WebDriver: {e}")
         return None
+
+# --- Game State Functions ---
+def save_game_state(discovered_items, crafted_combinations):
+    """Saves the game state to a file."""
+    with open(GAME_STATE_FILE, "w") as f:
+        json.dump({
+            "discovered_items": list(discovered_items),
+            "crafted_combinations": [list(c) for c in crafted_combinations]
+        }, f)
+    print("Game state saved.")
+
+def load_game_state():
+    """Loads the game state from a file."""
+    try:
+        with open(GAME_STATE_FILE, "r") as f:
+            state = json.load(f)
+            return set(state["discovered_items"]), set(tuple(c) for c in state["crafted_combinations"])
+    except FileNotFoundError:
+        return set(['Water', 'Fire', 'Wind', 'Earth']), set()
+    except Exception as e:
+        print(f"Error loading game state: {e}")
+        return set(['Water', 'Fire', 'Wind', 'Earth']), set()
 
 # --- Game Interaction Functions ---
 def navigate_to_game(driver, url):
@@ -57,10 +84,13 @@ def navigate_to_game(driver, url):
 def get_craftable_elements(driver):
     """Finds and returns a list of web elements representing craftable items, sorted alphabetically."""
     try:
-        items = driver.find_elements(By.CSS_SELECTOR, ".item")
+        # !!! IMPORTANT: You need to find the correct selector for items !!!
+        # Open Infinite Craft in your browser, right-click an item, and select "Inspect".
+        # Look for a common class name or data attribute.
+        # Example (replace with actual):
+        items = driver.find_elements(By.CSS_SELECTOR, ".item") # Common class for items
         if not items:
             print("No craftable elements found. Check your selector.")
-        # Sort elements by their text content
         return sorted(items, key=lambda x: x.text)
     except NoSuchElementException:
         print("Could not find elements with the specified selector.")
@@ -96,7 +126,9 @@ def perform_drag_and_drop(driver, element1, element2):
 def clear_screen(driver):
     """Clears the screen of crafted items."""
     try:
-        clear_button = driver.find_element(By.ID, "clear-button")
+        # !!! IMPORTANT: Find the correct selector for the clear button !!!
+        # Example:
+        clear_button = driver.find_element(By.XPATH, "//div[contains(text(), 'Clear')]")
         clear_button.click()
         print("Screen cleared.")
         time.sleep(1)
@@ -107,6 +139,20 @@ def clear_screen(driver):
     except Exception as e:
         print(f"Error clearing screen: {e}")
         return False
+
+def get_new_element_text(driver):
+    """
+    Attempts to find and return the text of the newly created element.
+    This is highly dependent on how Infinite Craft displays new elements.
+    """
+    try:
+        # !!! IMPORTANT: Find the correct selector for the new element display !!!
+        new_element_display = driver.find_element(By.CSS_SELECTOR, ".instance-discovered-text")
+        return new_element_display.text
+    except NoSuchElementException:
+        return None
+    except Exception as e:
+        return None
 
 # --- AI-Driven Combination Logic ---
 def choose_next_combination(elements, crafted_combinations, known_recipes, goals):
@@ -121,7 +167,6 @@ def choose_next_combination(elements, crafted_combinations, known_recipes, goals
     for category, goal_items in goals.items():
         for goal_item in goal_items:
             if goal_item not in current_element_texts:
-                # Find a recipe to craft the goal item
                 for (item1, item2), result in known_recipes.items():
                     if result == goal_item:
                         if item1 in current_element_texts and item2 in current_element_texts:
@@ -163,13 +208,9 @@ def automate_infinite_craft():
     if not navigate_to_game(driver, GAME_URL):
         return
 
+    newly_discovered_items, crafted_combinations = load_game_state()
+
     try:
-        crafted_combinations = set()
-        for combo_tuple in CRAFTING_RECIPES.keys():
-            crafted_combinations.add(tuple(sorted(combo_tuple)))
-
-        newly_discovered_items = set(['Water', 'Fire', 'Wind', 'Earth'])
-
         while True:
             elements = get_craftable_elements(driver)
             if not elements:
@@ -177,8 +218,6 @@ def automate_infinite_craft():
                 time.sleep(5)
                 driver.refresh()
                 continue
-
-            current_element_texts_before_craft = {el.text for el in elements if el.text}
 
             element1, element2 = choose_next_combination(elements, crafted_combinations, CRAFTING_RECIPES, GOALS)
 
@@ -193,15 +232,12 @@ def automate_infinite_craft():
             if perform_drag_and_drop(driver, element1, element2):
                 time.sleep(1)
 
-                updated_elements = get_craftable_elements(driver)
-                current_element_texts_after_craft = {el.text for el in updated_elements if el.text}
-
-                new_items = current_element_texts_after_craft - current_element_texts_before_craft
-                if new_items:
-                    for item in new_items:
-                        if item not in newly_discovered_items:
-                            newly_discovered_items.add(item)
-                            print(f"*** NEW ITEM DISCOVERED: {item} *** Total unique items: {len(newly_discovered_items)}")
+                new_item_text = get_new_element_text(driver)
+                if new_item_text and new_item_text not in newly_discovered_items:
+                    newly_discovered_items.add(new_item_text)
+                    print(f"*** NEW ITEM DISCOVERED: {new_item_text} *** Total unique items: {len(newly_discovered_items)}")
+                    # Add to a temporary session library
+                    CRAFTING_RECIPES[combination] = new_item_text
                 else:
                     print("No new element detected from this combination.")
 
@@ -218,6 +254,7 @@ def automate_infinite_craft():
         print(f"An unexpected error occurred: {e}")
     finally:
         if driver:
+            save_game_state(newly_discovered_items, crafted_combinations)
             print("Closing WebDriver.")
             driver.quit()
 
