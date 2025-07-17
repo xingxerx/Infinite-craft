@@ -7,6 +7,8 @@ from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.chrome.service import Service as ChromeService
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # --- Configuration ---
 GAME_URL = "https://neal.fun/infinite-craft/"
@@ -83,25 +85,31 @@ def navigate_to_game(driver, url):
     try:
         driver.get(url)
         print(f"Navigated to: {url}")
-        time.sleep(3)
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, ".item")))
         return True
     except TimeoutException:
-        print(f"Page load timed out for {url}")
+        print(f"Page load timed out or initial elements not found for {url}")
         driver.quit()
         return False
     except Exception as e:
         print(f"Error navigating to game: {e}")
         driver.quit()
         return False
-    return True
 
 def get_craftable_elements(driver):
     """Finds and returns a list of web elements representing craftable items, sorted alphabetically."""
     try:
+        # Wait for items to be loaded
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".item"))
+        )
         items = driver.find_elements(By.CSS_SELECTOR, ".item")
         if not items:
             print("No craftable elements found. Check your selector.")
         return sorted(items, key=lambda x: x.text)
+    except TimeoutException:
+        print("Timed out waiting for craftable elements to appear.")
+        return []
     except NoSuchElementException:
         print("Could not find elements with the specified selector.")
         return []
@@ -127,7 +135,8 @@ def perform_drag_and_drop(driver, element1, element2):
         actions = ActionChains(driver)
         actions.drag_and_drop(element1, element2).perform()
         print(f"Attempted to combine {element1.text} and {element2.text}.")
-        time.sleep(2)
+        # A small static wait might still be needed for the animation to complete
+        time.sleep(0.5)
         return True
     except Exception as e:
         print(f"Error during drag and drop: {e}")
@@ -136,13 +145,22 @@ def perform_drag_and_drop(driver, element1, element2):
 def clear_screen(driver):
     """Clears the screen of crafted items."""
     try:
-        clear_button = driver.find_element(By.XPATH, "//div[contains(text(), 'Clear')]")
+        clear_button = WebDriverWait(driver, 10).until(
+            EC.element_to_be_clickable((By.XPATH, "//div[contains(text(), 'Clear')]"))
+        )
         clear_button.click()
+        # Wait for the instances to disappear, if any exist
+        try:
+            WebDriverWait(driver, 5).until(
+                EC.invisibility_of_element_located((By.CSS_SELECTOR, ".instance"))
+            )
+        except TimeoutException:
+            # It's okay if there were no instances to clear
+            pass
         print("Screen cleared.")
-        time.sleep(1)
         return True
-    except NoSuchElementException:
-        print("Clear button not found.")
+    except TimeoutException:
+        print("Clear button not found or screen not cleared in time.")
         return False
     except Exception as e:
         print(f"Error clearing screen: {e}")
@@ -151,11 +169,14 @@ def clear_screen(driver):
 def get_new_element_text(driver):
     """Attempts to find and return the text of the newly created element."""
     try:
-        new_element_display = driver.find_element(By.CSS_SELECTOR, ".instance-discovered-text")
+        new_element_display = WebDriverWait(driver, 2).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".instance-discovered-text"))
+        )
         return new_element_display.text
-    except NoSuchElementException:
+    except TimeoutException:
         return None
     except Exception as e:
+        print(f"Error getting new element text: {e}")
         return None
 
 # --- AI-Driven Combination Logic ---
@@ -185,17 +206,16 @@ def choose_next_combination(elements, crafted_combinations, known_recipes, goals
                 return element_map[item1], element_map[item2]
 
     # 3. Fallback: Systematically try new combinations
-    for i in range(len(elements)):
-        for j in range(i, len(elements)):
-            element1 = elements[i]
-            element2 = elements[j]
-
-            if not hasattr(element1, 'text') or not hasattr(element2, 'text') or not element1.text or not element2.text:
-                continue
-
-            combination = tuple(sorted((element1.text, element2.text)))
+    element_texts = sorted(list(current_element_texts))
+    for i in range(len(element_texts)):
+        for j in range(i, len(element_texts)):
+            item1_text = element_texts[i]
+            item2_text = element_texts[j]
+            
+            combination = tuple(sorted((item1_text, item2_text)))
             if combination not in crafted_combinations:
-                return element1, element2
+                print(f"AI Strategy: Trying new combination: {item1_text} + {item2_text}")
+                return element_map[item1_text], element_map[item2_text]
 
     # 4. If all else fails, try a random combination
     print("AI Strategy: Trying a random combination.")
@@ -222,21 +242,23 @@ def automate_infinite_craft():
             if not elements:
                 print("No elements to craft with. Refreshing...")
                 driver.refresh()
+                time.sleep(5) # Wait for page to reload
                 continue
 
             element1, element2 = choose_next_combination(elements, crafted_combinations, crafting_recipes, GOALS)
 
             if not element1 or not element2:
-                print("\nNo new combinations to try. Stopping.")
+                print("
+No new combinations to try. All known combinations have been attempted.")
                 break
 
             combination = tuple(sorted((element1.text, element2.text)))
-            crafted_combinations.add(combination)
-
-            print(f"\nAttempting combination: {element1.text} + {element2.text}")
+            
+            print(f"
+Attempting combination: {element1.text} + {element2.text}")
             if perform_drag_and_drop(driver, element1, element2):
-                time.sleep(1)
-
+                crafted_combinations.add(combination)
+                
                 new_item_text = get_new_element_text(driver)
                 if new_item_text and new_item_text not in newly_discovered_items:
                     newly_discovered_items.add(new_item_text)
@@ -253,14 +275,15 @@ def automate_infinite_craft():
                     print("No new element detected from this combination.")
 
                 clear_screen(driver)
-                time.sleep(1)
 
-            print(f"\nFinished one cycle. Total unique items: {len(newly_discovered_items)}. Total reward: {total_reward}")
+            print(f"
+Finished one cycle. Total unique items: {len(newly_discovered_items)}. Total reward: {total_reward}")
             print("AI is choosing the next combination...")
             time.sleep(2)
 
     except KeyboardInterrupt:
-        print("\nAutomation stopped by user.")
+        print("
+Automation stopped by user.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
     finally:
