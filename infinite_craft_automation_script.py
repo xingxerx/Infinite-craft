@@ -183,55 +183,137 @@ def search_for_element(driver, element_name):
         return None
 
 def perform_drag_and_drop(driver, element1, element2):
-    """Performs a drag-and-drop operation between two elements with improved reliability."""
+    """
+    Performs drag-and-drop operation using the correct method for Infinite Craft.
+
+    Based on analysis, Infinite Craft elements are not draggable by default,
+    so we need to use JavaScript-based drag simulation or mouse events.
+    """
     try:
-        # Ensure elements are visible and interactable
+        print(f"🎯 Attempting to combine {element1.text} and {element2.text}")
+
+        # Ensure elements are visible
         driver.execute_script("arguments[0].scrollIntoView(true);", element1)
         driver.execute_script("arguments[0].scrollIntoView(true);", element2)
+        time.sleep(0.3)
 
-        # Wait for elements to be stable
-        time.sleep(0.2)
-
-        # Try multiple drag-and-drop methods for better reliability
-        actions = ActionChains(driver)
-
-        # Method 1: Standard drag and drop
+        # Method 1: JavaScript-based drag simulation (most reliable for this game)
         try:
-            actions.drag_and_drop(element1, element2).perform()
-            print(f"Attempted to combine {element1.text} and {element2.text} (Method 1: drag_and_drop)")
-        except Exception as e1:
-            print(f"Method 1 failed: {e1}")
+            print("  📝 Using JavaScript drag simulation...")
 
-            # Method 2: Click and hold, move to target, release
+            # JavaScript code to simulate HTML5 drag and drop
+            js_drag_drop = """
+            function simulateDragDrop(sourceNode, destinationNode) {
+                var EVENT_TYPES = {
+                    DRAG_END: 'dragend',
+                    DRAG_ENTER: 'dragenter',
+                    DRAG_EXIT: 'dragexit',
+                    DRAG_LEAVE: 'dragleave',
+                    DRAG_OVER: 'dragover',
+                    DRAG_START: 'dragstart',
+                    DROP: 'drop'
+                };
+
+                function createCustomEvent(type) {
+                    var event = new CustomEvent("CustomEvent");
+                    event.initCustomEvent(type, true, true, null);
+                    event.dataTransfer = {
+                        data: {},
+                        setData: function(type, val) {
+                            this.data[type] = val;
+                        },
+                        getData: function(type) {
+                            return this.data[type];
+                        }
+                    };
+                    return event;
+                }
+
+                function dispatchEvent(node, type, event) {
+                    if (node.dispatchEvent) {
+                        return node.dispatchEvent(event);
+                    }
+                    if (node.fireEvent) {
+                        return node.fireEvent("on" + type, event);
+                    }
+                }
+
+                var event = createCustomEvent(EVENT_TYPES.DRAG_START);
+                dispatchEvent(sourceNode, EVENT_TYPES.DRAG_START, event);
+
+                var dropEvent = createCustomEvent(EVENT_TYPES.DROP);
+                dropEvent.dataTransfer = event.dataTransfer;
+                dispatchEvent(destinationNode, EVENT_TYPES.DROP, dropEvent);
+
+                var dragEndEvent = createCustomEvent(EVENT_TYPES.DRAG_END);
+                dragEndEvent.dataTransfer = event.dataTransfer;
+                dispatchEvent(sourceNode, EVENT_TYPES.DRAG_END, dragEndEvent);
+            }
+
+            simulateDragDrop(arguments[0], arguments[1]);
+            """
+
+            driver.execute_script(js_drag_drop, element1, element2)
+            print("  ✅ JavaScript drag simulation completed")
+
+        except Exception as js_error:
+            print(f"  ❌ JavaScript method failed: {js_error}")
+
+            # Method 2: Mouse event simulation
             try:
+                print("  🖱️  Using mouse event simulation...")
+
                 actions = ActionChains(driver)
-                actions.click_and_hold(element1).move_to_element(element2).release().perform()
-                print(f"Attempted to combine {element1.text} and {element2.text} (Method 2: click_and_hold)")
-            except Exception as e2:
-                print(f"Method 2 failed: {e2}")
 
-                # Method 3: Manual coordinate-based drag
+                # Get element centers
+                elem1_rect = driver.execute_script("""
+                    var rect = arguments[0].getBoundingClientRect();
+                    return {x: rect.left + rect.width/2, y: rect.top + rect.height/2};
+                """, element1)
+
+                elem2_rect = driver.execute_script("""
+                    var rect = arguments[0].getBoundingClientRect();
+                    return {x: rect.left + rect.width/2, y: rect.top + rect.height/2};
+                """, element2)
+
+                # Simulate mouse drag
+                actions.move_to_element(element1)
+                actions.click_and_hold()
+                actions.move_by_offset(
+                    elem2_rect['x'] - elem1_rect['x'],
+                    elem2_rect['y'] - elem1_rect['y']
+                )
+                actions.release()
+                actions.perform()
+
+                print("  ✅ Mouse event simulation completed")
+
+            except Exception as mouse_error:
+                print(f"  ❌ Mouse event method failed: {mouse_error}")
+
+                # Method 3: Direct element interaction (click-based)
                 try:
-                    actions = ActionChains(driver)
-                    source_location = element1.location
-                    target_location = element2.location
+                    print("  👆 Using click-based interaction...")
 
-                    actions.move_to_element(element1).click_and_hold()
-                    actions.move_by_offset(
-                        target_location['x'] - source_location['x'],
-                        target_location['y'] - source_location['y']
-                    ).release().perform()
-                    print(f"Attempted to combine {element1.text} and {element2.text} (Method 3: coordinate-based)")
-                except Exception as e3:
-                    print(f"Method 3 failed: {e3}")
+                    # Some games respond to clicking elements in sequence
+                    element1.click()
+                    time.sleep(0.2)
+                    element2.click()
+
+                    print("  ✅ Click-based interaction completed")
+
+                except Exception as click_error:
+                    print(f"  ❌ Click-based method failed: {click_error}")
                     return False
 
-        # Wait longer for the animation and new element creation
-        time.sleep(1.5)
+        # Wait for the game to process the combination
+        print("  ⏳ Waiting for game to process combination...")
+        time.sleep(2)
+
         return True
 
     except Exception as e:
-        print(f"Error during drag and drop: {e}")
+        print(f"❌ Critical error during drag and drop: {e}")
         return False
 
 def clear_screen(driver):
