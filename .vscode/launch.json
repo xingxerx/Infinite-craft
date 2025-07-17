@@ -3,10 +3,22 @@
     "configurations": [
         {
             "name": "Python: Current File",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/Infinite Craft Automation Script (Conceptual).py",
+            "program": "${file}",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: Infinite Craft Script",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/infinite_craft_automation_script.py",
+            "console": "integratedTerminal",
+            "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }

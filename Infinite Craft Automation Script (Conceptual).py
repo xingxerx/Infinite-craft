@@ -219,7 +219,7 @@ def choose_next_combination(elements, crafted_combinations, known_recipes, goals
         for j in range(i, len(element_texts)):
             item1_text = element_texts[i]
             item2_text = element_texts[j]
-            
+
             combination = tuple(sorted((item1_text, item2_text)))
             if combination not in crafted_combinations:
                 print(f"AI Strategy: Trying new combination: {item1_text} + {item2_text}")
@@ -260,14 +260,13 @@ def automate_infinite_craft():
                 break
 
             combination = tuple(sorted((element1.text, element2.text)))
-            
+
             print(f"Attempting combination: {element1.text} + {element2.text}")
             if perform_drag_and_drop(driver, element1, element2):
                 crafted_combinations.add(combination)
-                
+
                 # Wait a moment for the new element to be created
                 time.sleep(1)
-                
                 new_item_text = get_new_element_text(driver)
                 if new_item_text and new_item_text not in newly_discovered_items:
                     newly_discovered_items.add(new_item_text)
@@ -279,7 +278,8 @@ def automate_infinite_craft():
                     for category, goal_items in GOALS.items():
                         if new_item_text in goal_items:
                             total_reward += REWARDS["goal_item"]
-                            print(f"*** GOAL ACHIEVED: '{new_item_text}' in category '{category}' (Reward: {REWARDS['goal_item']}) ***")
+                            print(f"*** GOAL ACHIEVED: '{new_item_text}' in category '{category}' "
+                                  f"(Reward: {REWARDS['goal_item']}) ***")
                 elif new_item_text:
                     print(f"Combination created: {new_item_text} (already known)")
                 else:
@@ -291,7 +291,8 @@ def automate_infinite_craft():
                 print("Refreshing available elements...")
                 time.sleep(1)
 
-            print(f"Finished one cycle. Total unique items: {len(newly_discovered_items)}. Total reward: {total_reward}")
+            print(f"Finished one cycle. Total unique items: {len(newly_discovered_items)}. "
+                  f"Total reward: {total_reward}")
             print("AI is choosing the next combination...")
             time.sleep(2)
 
