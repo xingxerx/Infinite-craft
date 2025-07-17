@@ -29,18 +29,49 @@ REWARDS = {
 
 # --- WebDriver Setup ---
 def setup_driver():
-    """Sets up and returns a Chrome WebDriver instance."""
+    """Sets up and returns a Chrome WebDriver instance with optimized settings."""
     try:
         service = ChromeService(ChromeDriverManager().install())
         options = webdriver.ChromeOptions()
+
+        # Basic stability options
         options.add_argument("--disable-gpu")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--log-level=3")
+
+        # Additional options for better automation reliability
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-plugins")
+        options.add_argument("--disable-images")  # Faster loading
+        options.add_argument("--disable-javascript-harmony-shipping")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+
+        # Set user agent to avoid detection
+        options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
+        # Experimental options for better performance
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+
         driver = webdriver.Chrome(service=service, options=options)
+
+        # Execute script to remove webdriver property
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+        # Set timeouts
         driver.set_page_load_timeout(30)
-        print("WebDriver setup successful.")
+        driver.implicitly_wait(5)
+
+        # Maximize window for better element interaction
+        driver.maximize_window()
+
+        print("WebDriver setup successful with enhanced options.")
         return driver
+
     except WebDriverException as e:
         print(f"Error setting up WebDriver: {e}")
         return None
