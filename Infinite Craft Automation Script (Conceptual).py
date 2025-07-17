@@ -169,12 +169,20 @@ def clear_screen(driver):
 def get_new_element_text(driver):
     """Attempts to find and return the text of the newly created element."""
     try:
-        new_element_display = WebDriverWait(driver, 2).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, ".instance-discovered-text"))
+        # Wait for the new element to appear in the sidebar
+        new_element = WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".item:last-child"))
         )
-        return new_element_display.text
+        return new_element.text.strip()
     except TimeoutException:
-        return None
+        # Try alternative selector for discovered text
+        try:
+            new_element_display = WebDriverWait(driver, 2).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, ".instance-discovered-text"))
+            )
+            return new_element_display.text.strip()
+        except TimeoutException:
+            return None
     except Exception as e:
         print(f"Error getting new element text: {e}")
         return None
@@ -242,22 +250,23 @@ def automate_infinite_craft():
             if not elements:
                 print("No elements to craft with. Refreshing...")
                 driver.refresh()
-                time.sleep(5) # Wait for page to reload
+                time.sleep(5)
                 continue
 
             element1, element2 = choose_next_combination(elements, crafted_combinations, crafting_recipes, GOALS)
 
             if not element1 or not element2:
-                print("
-No new combinations to try. All known combinations have been attempted.")
+                print("No new combinations to try. All known combinations have been attempted.")
                 break
 
             combination = tuple(sorted((element1.text, element2.text)))
             
-            print(f"
-Attempting combination: {element1.text} + {element2.text}")
+            print(f"Attempting combination: {element1.text} + {element2.text}")
             if perform_drag_and_drop(driver, element1, element2):
                 crafted_combinations.add(combination)
+                
+                # Wait a moment for the new element to be created
+                time.sleep(1)
                 
                 new_item_text = get_new_element_text(driver)
                 if new_item_text and new_item_text not in newly_discovered_items:
@@ -271,19 +280,23 @@ Attempting combination: {element1.text} + {element2.text}")
                         if new_item_text in goal_items:
                             total_reward += REWARDS["goal_item"]
                             print(f"*** GOAL ACHIEVED: '{new_item_text}' in category '{category}' (Reward: {REWARDS['goal_item']}) ***")
+                elif new_item_text:
+                    print(f"Combination created: {new_item_text} (already known)")
                 else:
                     print("No new element detected from this combination.")
 
                 clear_screen(driver)
+                
+                # Refresh elements list to include any new discoveries
+                print("Refreshing available elements...")
+                time.sleep(1)
 
-            print(f"
-Finished one cycle. Total unique items: {len(newly_discovered_items)}. Total reward: {total_reward}")
+            print(f"Finished one cycle. Total unique items: {len(newly_discovered_items)}. Total reward: {total_reward}")
             print("AI is choosing the next combination...")
             time.sleep(2)
 
     except KeyboardInterrupt:
-        print("
-Automation stopped by user.")
+        print("Automation stopped by user.")
     except Exception as e:
         print(f"An unexpected error occurred: {e}")
     finally:
@@ -294,3 +307,4 @@ Automation stopped by user.")
 
 if __name__ == "__main__":
     automate_infinite_craft()
+
